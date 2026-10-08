@@ -1,0 +1,19 @@
+name: Builder log
+description: Share a builder log for troubleshooting
+title: "[Build log] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Paste only the plain-text build log below. Review it for private information such as your computer username and local paths first.
+
+        Do not attach or upload game files, recovered projects or assets, APKs, saves, signing keys, or any other files. This project does not accept game or APK uploads.
+  - type: textarea
+    id: build-log
+    attributes:
+      label: Build log text only
+      description: Paste the copied text from View / Copy Build Log here. Do not attach files.
+      placeholder: Paste only the build log text here.
+      render: text
+    validations:
+      required: true
