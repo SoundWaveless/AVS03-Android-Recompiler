@@ -5,7 +5,7 @@ a = Analysis(
     ['avs03_wrapper_builder.py'],
     pathex=[],
     binaries=[],
-    datas=[('android_patch', 'android_patch'), ('docs', 'docs'), ('LICENSE', 'docs')],
+    datas=[('android_patch', 'android_patch'), ('../../docs', 'docs'), ('../../LICENSE', 'docs')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

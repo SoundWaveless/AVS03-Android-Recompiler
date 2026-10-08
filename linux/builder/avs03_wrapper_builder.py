@@ -447,9 +447,12 @@ class Builder(tk.Tk):
 
     def open_disclaimer(self) -> None:
         base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-        disclaimer_path = base / "docs" / "DISCLAIMER-ACKNOWLEDGMENT.md"
-        if not disclaimer_path.is_file():
-            disclaimer_path = Path(sys.executable).resolve().parent / "docs" / "DISCLAIMER-ACKNOWLEDGMENT.md"
+        disclaimer_candidates = [
+            base / "docs" / "DISCLAIMER-ACKNOWLEDGMENT.md",
+            base.parent.parent / "docs" / "DISCLAIMER-ACKNOWLEDGMENT.md",
+            Path(sys.executable).resolve().parent / "docs" / "DISCLAIMER-ACKNOWLEDGMENT.md",
+        ]
+        disclaimer_path = next((path for path in disclaimer_candidates if path.is_file()), disclaimer_candidates[0])
         try:
             disclaimer = disclaimer_path.read_text(encoding="utf-8")
         except OSError as exc:

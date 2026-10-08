@@ -2,13 +2,13 @@
 
 > **UNOFFICIAL FAN PROJECT.** This project is not affiliated with, authorized by, or endorsed by Shaun Hammond Business Solutions Limited, Valve, Steam, or Godot. Official listings: [full game](https://store.steampowered.com/app/3832490/Antivirus_Survivors_2003_Professional/) · [demo](https://store.steampowered.com/app/4320630/Antivirus_Survivors_2003_Professional_Demo/).
 
-This document records what the AVS03 Android Recompiler contains, what was added for this project, and the public technical references used for the build workflow.
+This document records what the AVS03 Android Recompiler contains, what was added for this project, and the public technical references used for the build workflow. The source is organized into `linux/builder/` and `windows/builder/`, each with its platform launcher/build files and a mirrored copy of the shared Python modules and Android patches. Downloadable packages are kept under each platform's `downloads/` folder.
 
 ## Project code
 
 | File | Purpose |
 |---|---|
-| `avs03_wrapper_builder.py` | Python/Tkinter desktop GUI. Selects the local game executable and APK output, runs recovery/build steps, detects desktop saves, creates save archives, optionally transfers saves using ADB, records build logs, and provides OS-specific Quick Start, in-app project terms, and a log viewer with a Copy All Log Text button. The form and action footer resize with the window; the window close action shuts down open dialogs and pending callbacks. |
+| `avs03_wrapper_builder.py` | Mirrored under both platform builder folders. Python/Tkinter desktop GUI. Selects the local game executable and APK output, runs recovery/build steps, detects desktop saves, creates save archives, optionally transfers saves using ADB, records build logs, and provides OS-specific Quick Start, in-app project terms, and a log viewer with a Copy All Log Text button. |
 | `tool_setup.py` | Downloads/caches GDRE Tools, Godot, Godot Android export templates, and Eclipse Temurin JDK 17. It validates a selected local SDK; the separate downloader edition can fetch official Google command-line tools and install SDK packages after explicit user consent. |
 | `edition_config.py` | Selects the release mode: manual SDK selection or the separate consent-based SDK Downloader edition. |
 | `android_builder.py` | Applies touch/save changes to a recovered Godot project, configures the Android export preset, imports Android-compatible textures, validates Android GDExtension dependencies, and exports the APK. It preserves the recovered Steamworks autoload and extension descriptor. |
@@ -18,9 +18,10 @@ This document records what the AVS03 Android Recompiler contains, what was added
 | `android_patch/android_touch_controls.gd` | Adds the Android/touchscreen control layer and connects the runtime touch surface. |
 | `android_patch/touch_surface.gd` | Draws and handles the Xbox-style virtual controller: analog movement or D-pad, A/B/X, LT, and Pause. Captures touch zones so controller touches do not become in-game mouse clicks. Includes classic/custom layouts, drag positioning, and two-finger pinch resizing for individual controls. |
 | `android_patch/save_transfer_importer.gd` | Imports the optional ZIP archive into writable Android `user://` storage, maps Steam-ID profile folders to the Android local profile folder, and records an import checksum. |
-| `Run-Builder.bat` | Launch the Python GUI from the Windows source package. |
-| `Build-Windows-Exe.bat` | Build a standalone Windows GUI executable with PyInstaller on Windows, embedding the project terms, README, and MIT license. The ready-to-run Linux release is built on Linux and shipped separately. |
-| `Build-Linux-App.sh` | Repository-source-only Linux packaging script; it is not included in the Windows source ZIP. It embeds the project terms, README, and MIT license in the Linux standalone app. |
+| `windows/builder/Run-Builder.bat` | Launch the Python GUI from the Windows source package. |
+| `windows/builder/Build-Windows-Exe.bat` | Build a standalone Windows GUI executable with PyInstaller on Windows, embedding the docs and MIT license. |
+| `linux/builder/Build-Linux-App.sh` | Build a standalone Linux GUI executable from the Linux builder folder, embedding the docs and MIT license. It is not included in the Windows source ZIP. |
+| `linux/builder/Build-Linux-SDK-Downloader.sh` | Build the Linux SDK Downloader edition and restore the standard edition flag afterward. |
 | `../LICENSE` | MIT license for the project's original builder code, Android patches, and documentation; it does not cover the game or third-party materials. |
 
 The GUI and Godot patch code were created or adapted for this project from the user's requirements. The APK is generated from the user's local Steam installation and recovered project. The compiler packages do not include the game executable, game PCK, recovered game assets, or a prebuilt game APK. The Android patch does not install a no-op Steamworks replacement or delete the recovered extension descriptor. When Android libraries are absent, the builder can fetch a public GodotSteam package after user consent. The package archive is pinned to commit `87e9456ed0922d861d352cda823ee1bde682c987` and SHA-256 `0271ab46929363a186c147408e763b1f8b28acff7a36b6aebc4592e68a2739a5`; only its Android ARM64 debug/release GDExtension libraries and `libsteam_api.so` are copied into the user’s private recovered workspace. They are architecture-checked, and other declared Android libraries remain subject to preflight validation. This supplies missing platform binaries while leaving the recovered game scripts, assets, and Steamworks descriptor in place. The tool does not authenticate a Steam account or verify file ownership. It does not intentionally bypass DRM, but cannot guarantee preservation of unknown protections.

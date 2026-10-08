@@ -1,0 +1,26 @@
+# Python runtime artifacts
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local packaging output (publish approved ZIPs as GitHub release assets)
+build/
+dist/
+
+# User game/build material and credentials: never commit these
+*.apk
+*.aab
+*.pck
+*.build.log
+*.keystore
+*.jks
+*.x86_64
+*.godot
+*.import
+.godot/
+android-sdk/
+
+# Project-local GitHub CLI installation
+.tools/
+
+.tools/

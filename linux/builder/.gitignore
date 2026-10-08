@@ -22,3 +22,5 @@ android-sdk/
 
 # Project-local GitHub CLI installation
 .tools/
+
+.tools/

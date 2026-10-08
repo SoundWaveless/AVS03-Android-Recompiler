@@ -10,7 +10,7 @@ The original builder code and project documentation are licensed under MIT in `.
 
 ## Packaged Linux builder
 
-The ready-to-run binary is `dist/AVS03-Android-Builder` or the same file inside `dist/AVS03-Android-Builder-Linux-x86_64.zip`.
+Download the ready-to-run binary from [the standard Linux package](../linux/downloads/AVS03-Android-Builder-Linux-x86_64.zip) or [the Linux SDK Downloader package](../linux/downloads/AVS03-Android-Builder-Linux-SDK-Downloader.zip).
 
 - 64-bit x86 Linux with a graphical desktop session (X11 or Wayland with the normal desktop compatibility layer).
 - A compatible glibc system. The executable was built on a current Linux host; its binary references glibc symbols no newer than `GLIBC_2.14`, but it has only been packaged on this host, not verified across Linux distributions.
@@ -21,7 +21,7 @@ The packaged file includes the Python runtime and builder code. It does not incl
 
 ## Windows source builder
 
-The Windows deliverable is a source/launcher ZIP because a native Windows `.exe` cannot be built on the Linux host. It includes `Run-Builder.bat` and `Build-Windows-Exe.bat`.
+The Windows downloads are [the standard source package](../windows/downloads/AVS03-Android-Builder-Windows-Source.zip) and [the SDK Downloader source package](../windows/downloads/AVS03-Android-Builder-Windows-SDK-Downloader-Source.zip); each includes `Run-Builder.bat` and `Build-Windows-Exe.bat`. A native Windows `.exe` must be built on Windows.
 
 - Windows 10 or later, 64-bit.
 - Python 3.10 or later with Tcl/Tk installed and the `py` launcher available on PATH.
@@ -80,7 +80,7 @@ Selecting local game files is a build input, not a Steam account ownership verif
 
 ## File locations
 
-- Builder packages: `dist/` beneath the builder folder.
+- Builder source and scripts: `linux/builder/` or `windows/builder/`. Download packages: the corresponding OS folder's `downloads/` subfolder.
 - APK build log: next to the chosen APK, with suffix `.build.log`. **View / Copy Build Log → Copy All Log Text** copies the complete log shown in the viewer and reports the copied character count.
 - Recovered workspaces and downloaded non-SDK tools: under the user's app-data directory in `AVS03-Android-Port-Builder/tools/`.
 - Selected Android SDK path: `android-sdk-path.txt` under that same tools directory; this file stores only the folder path. Downloader edition SDK packages and accepted license records live under `tools/android-sdk/` on that user's computer.

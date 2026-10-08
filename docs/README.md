@@ -22,9 +22,12 @@ Before a build, the app shows a download notice with links to the tool sources a
 
 ## Packages
 
-- **Linux x86-64:** `dist/AVS03-Android-Builder-Linux-x86_64.zip` contains a ready-to-launch one-file executable and the documentation.
-- **Windows:** `dist/AVS03-Android-Builder-Windows-Source.zip` contains the Python GUI, Windows `.bat` launcher/build script, required Python modules, Android patch files, and documentation. It excludes Linux executables and shell scripts. Run `Run-Builder.bat` to launch with Python, or `Build-Windows-Exe.bat` to create a standalone `.exe` on Windows.
-- **SDK Downloader editions:** `dist/AVS03-Android-Builder-Linux-SDK-Downloader.zip` and `dist/AVS03-Android-Builder-Windows-SDK-Downloader-Source.zip` use Google's current Android CLI to install missing Android SDK packages after explicit user consent. These packages download SDK contents to the user's computer; they do not bundle or redistribute them.
+The platform folders contain the source builder files and downloadable packages for that OS:
+
+- **[Linux folder](../linux/):** [Linux x86-64](../linux/downloads/AVS03-Android-Builder-Linux-x86_64.zip) and [Linux SDK Downloader](../linux/downloads/AVS03-Android-Builder-Linux-SDK-Downloader.zip). Each ZIP contains a ready-to-launch executable and the documentation.
+- **[Windows folder](../windows/):** [Windows Source](../windows/downloads/AVS03-Android-Builder-Windows-Source.zip) and [Windows SDK Downloader Source](../windows/downloads/AVS03-Android-Builder-Windows-SDK-Downloader-Source.zip). Each contains the Python GUI, Windows launcher/build scripts, required modules, Android patch files, and documentation. Run `Run-Builder.bat` to launch with Python, or `Build-Windows-Exe.bat` to build a standalone `.exe` on Windows.
+
+The SDK Downloader editions use Google's current Android CLI to install missing SDK packages after explicit user consent. They download SDK contents to the user's computer; they do not bundle or redistribute them. The Windows source package excludes Linux executables and shell scripts.
 
 PyInstaller does not cross-compile. The Linux executable was built on Linux. A Windows executable must be built on Windows; this Linux host cannot produce or verify a native `.exe`.
 
@@ -49,7 +52,7 @@ sudo apt update
 sudo apt install python3 python3-tk python3-venv
 ```
 
-In the project source tree, run `./Run-Builder.sh`. To produce a standalone Linux executable from source, run `./Build-Linux-App.sh`. The Windows release ZIP contains only Windows launch/build scripts; Linux shell scripts are not included there.
+In the repository, the Linux source files are in `linux/builder/`. Open a terminal there and run `./Run-Builder.sh`. To build the standard standalone Linux executable, run `./Build-Linux-App.sh`; to build the SDK Downloader edition, run `./Build-Linux-SDK-Downloader.sh`. The Windows packages contain only Windows launch/build scripts; Linux shell scripts are not included there.
 
 ## Build an Android APK
 
