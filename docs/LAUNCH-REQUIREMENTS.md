@@ -6,7 +6,7 @@ This document separates requirements for opening the desktop builder from requir
 
 The application includes a **Quick Start** popup tailored to the detected operating system and a **View Disclaimer** popup that opens the included project terms.
 
-The original builder code and project documentation are licensed under MIT in `LICENSE`; this license does not cover the game or third-party tools. The project terms in `DISCLAIMER-ACKNOWLEDGMENT.md` describe user and maintainer responsibilities and project risks, without adding a field-of-use restriction to the MIT license. Maintainer contact for project, licensing, or third-party tool concerns: [GitHub profile](https://github.com/SoundWaveless).
+The original builder code and project documentation are licensed under MIT in `../LICENSE`; this license does not cover the game or third-party tools. The project terms in `DISCLAIMER-ACKNOWLEDGMENT.md` describe user and maintainer responsibilities and project risks, without adding a field-of-use restriction to the MIT license. Maintainer contact for project, licensing, or third-party tool concerns: [GitHub profile](https://github.com/SoundWaveless).
 
 ## Packaged Linux builder
 

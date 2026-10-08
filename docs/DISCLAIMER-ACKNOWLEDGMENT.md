@@ -6,9 +6,9 @@
 
 ## Acknowledgment by downloading or using
 
-The maintainer intends this notice to be acknowledged automatically: **by downloading, installing, or using the AVS03 Android Recompiler, you acknowledge these project terms and risk notices.** There is no separate in-app acceptance checkbox. The [MIT License](LICENSE) separately governs reuse of original project code and documentation. This notice does not add a field-of-use restriction to those permissions.
+The maintainer intends this notice to be acknowledged automatically: **by downloading, installing, or using the AVS03 Android Recompiler, you acknowledge these project terms and risk notices.** There is no separate in-app acceptance checkbox. The [MIT License](../LICENSE) separately governs reuse of original project code and documentation. This notice does not add a field-of-use restriction to those permissions.
 
-This statement describes the maintainer's intended terms. Whether any term is enforceable depends on applicable law and the circumstances. Nothing here removes rights or liabilities that applicable law does not allow a party to waive. The original project code is licensed separately under the [MIT License](LICENSE); this notice does not add a field-of-use restriction to that license.
+This statement describes the maintainer's intended terms. Whether any term is enforceable depends on applicable law and the circumstances. Nothing here removes rights or liabilities that applicable law does not allow a party to waive. The original project code is licensed separately under the [MIT License](../LICENSE); this notice does not add a field-of-use restriction to that license.
 
 ## What this project is
 
