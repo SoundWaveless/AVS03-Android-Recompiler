@@ -57,6 +57,10 @@ var editing_secondary_position: Vector2 = Vector2.ZERO
 var editing_scale: float = 1.0
 var pinch_start_distance: float = 1.0
 var pinch_start_scale: float = 1.0
+var observed_joypads: Array[int] = []
+var controls_hidden_by_hardware: bool = false
+var keyboard_activity_until_msec: int = 0
+const KEYBOARD_ACTIVITY_GRACE_MSEC: int = 8000
 
 
 func _ready() -> void:
@@ -64,6 +68,8 @@ func _ready() -> void:
 	set_process(true)
 	get_viewport().size_changed.connect(queue_redraw)
 	observed_touch_control_mode = Settings.touch_control_mode
+	observed_joypads = Input.get_connected_joypads()
+	controls_hidden_by_hardware = not observed_joypads.is_empty()
 	Settings.settings_changed.connect(on_settings_changed)
 	self_modulate = Color(1.0, 1.0, 1.0, Settings.touch_control_opacity / 100.0)
 
@@ -79,6 +85,7 @@ func set_edit_mode(enabled: bool) -> void:
 
 
 func _process(delta: float) -> void:
+	update_hardware_control_visibility()
 	if not movement_vector.is_zero_approx():
 		# Upgrade and quick-start overlays pause the game tree, so the cursor/player
 		# cannot consume virtual actions there. Move the active cursor while paused.
@@ -115,6 +122,19 @@ func _input(event: InputEvent) -> void:
 			queue_redraw()
 			get_viewport().set_input_as_handled()
 		return
+	if event is InputEventKey:
+		var key_event := event as InputEventKey
+		if key_event.pressed and not key_event.echo and key_event.device != InputEvent.DEVICE_ID_EMULATION:
+			controls_hidden_by_hardware = true
+			keyboard_activity_until_msec = Time.get_ticks_msec() + KEYBOARD_ACTIVITY_GRACE_MSEC
+			release_all_touches()
+			queue_redraw()
+	elif event is InputEventJoypadButton or event is InputEventJoypadMotion:
+		var joypad_event := event as InputEvent
+		if joypad_event.device != -1:
+			controls_hidden_by_hardware = true
+			release_all_touches()
+			queue_redraw()
 	if event is InputEventMouseButton:
 		var mouse_button := event as InputEventMouseButton
 		if not dispatching_virtual_action and mouse_button.device == InputEvent.DEVICE_ID_EMULATION and (not captured_control_touches.is_empty() or is_virtual_control_position(mouse_button.position)):
@@ -128,6 +148,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		if touch.pressed and not touch.canceled:
+			controls_hidden_by_hardware = false
 			begin_touch(touch.index, touch.position)
 			if not captured_control_touches.has(touch.index):
 				begin_direct_touch(touch.index, touch.position)
@@ -430,11 +451,18 @@ func update_dpad_touch(index: int, position: Vector2) -> void:
 	var offset := position - control_center_for("move", get_viewport_rect().size)
 	var direction := Vector2.ZERO
 	if offset.length() >= 8.0 * ui_scale:
-		if absf(offset.x) > absf(offset.y):
-			direction = Vector2.RIGHT if offset.x > 0.0 else Vector2.LEFT
+		var x_strength := absf(offset.x)
+		var y_strength := absf(offset.y)
+		var diagonal_ratio := 1.7
+		var x_direction := 1.0 if offset.x > 0.0 else -1.0
+		var y_direction := 1.0 if offset.y > 0.0 else -1.0
+		if x_strength > 0.0 and y_strength > 0.0 and x_strength / y_strength < diagonal_ratio and y_strength / x_strength < diagonal_ratio:
+			direction = Vector2(x_direction, y_direction)
+		elif x_strength > y_strength:
+			direction = Vector2(x_direction, 0.0)
 		else:
-			direction = Vector2.DOWN if offset.y > 0.0 else Vector2.UP
-	dpad_touches[index] = direction
+			direction = Vector2(0.0, y_direction)
+	dpad_touches[index] = direction.normalized() if not direction.is_zero_approx() else Vector2.ZERO
 	rebuild_movement_vector()
 	get_viewport().set_input_as_handled()
 	queue_redraw()
@@ -658,6 +686,8 @@ func draw_arrow(center: Vector2, direction: Vector2, active: bool) -> void:
 func _draw() -> void:
 	var size := get_viewport_rect().size
 	update_scale(size)
+	if controls_hidden_by_hardware and not edit_mode:
+		return
 	if edit_mode:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.0, 0.0, 0.0, 0.28), true)
 		draw_string(ThemeDB.fallback_font, Vector2(16.0, 30.0 * ui_scale), "Drag controls to move them", HORIZONTAL_ALIGNMENT_LEFT, -1, int(16.0 * ui_scale), Color.WHITE)
@@ -713,18 +743,39 @@ func draw_dpad(center: Vector2) -> void:
 	draw_rect(horizontal, BASE_COLOR, true)
 	draw_rect(vertical, Color(0.85, 0.94, 1.0, 0.4), false, 2.0 * ui_scale)
 	draw_rect(horizontal, Color(0.85, 0.94, 1.0, 0.4), false, 2.0 * ui_scale)
-	var directions: Array[Vector2] = [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]
+	var directions: Array[Vector2] = [
+		Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT,
+		Vector2(-1.0, -1.0), Vector2(1.0, -1.0), Vector2(-1.0, 1.0), Vector2(1.0, 1.0),
+	]
 	for direction: Vector2 in directions:
 		var active := movement_direction_active(direction)
-		var arrow_center := center + direction * arm * 0.66
-		draw_arrow(arrow_center, direction, active)
+		var normalized_direction := direction.normalized()
+		var arrow_center := center + normalized_direction * arm * (0.68 if direction.x == 0.0 or direction.y == 0.0 else 0.7)
+		draw_arrow(arrow_center, normalized_direction, active)
 
 
 func movement_direction_active(direction: Vector2) -> bool:
 	for touch_direction: Vector2 in dpad_touches.values():
-		if touch_direction == direction:
+		if touch_direction == direction.normalized():
 			return true
 	return false
+
+
+func update_hardware_control_visibility() -> void:
+	var current_joypads := Input.get_connected_joypads()
+	if current_joypads != observed_joypads:
+		var had_joypads := not observed_joypads.is_empty()
+		observed_joypads = current_joypads
+		if current_joypads.is_empty():
+			controls_hidden_by_hardware = false
+		elif not had_joypads:
+			controls_hidden_by_hardware = true
+			release_all_touches()
+		queue_redraw()
+	if current_joypads.is_empty() and Time.get_ticks_msec() >= keyboard_activity_until_msec and keyboard_activity_until_msec > 0:
+		keyboard_activity_until_msec = 0
+		controls_hidden_by_hardware = false
+		queue_redraw()
 
 
 func displayed_control_center(control: String, size: Vector2) -> Vector2:

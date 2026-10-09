@@ -14,6 +14,7 @@ import threading
 import time
 import tkinter as tk
 import traceback
+import json
 import zipfile
 import webbrowser
 from pathlib import Path
@@ -171,13 +172,21 @@ class Builder(tk.Tk):
         self.minsize(min(560, initial_width), min(430, initial_height))
         self.events: queue.Queue[tuple[str, object]] = queue.Queue()
         self._closed = False
+        self._busy = False
         self._process_events_after_id = None
         self._quickstart_after_id = None
         self._scrollregion_after_id = None
+        self.user_settings = self._load_builder_settings()
         self.game_executable_var = tk.StringVar()
+        self.cached_project_path = self._read_cached_project()
+        self.game_executable_var.set(str(self.user_settings.get("game_executable", "")))
         self.android_sdk_var = tk.StringVar(value=self._load_sdk_path())
-        self.apk_var = tk.StringVar(value=str(desktop_path("AVS03-Android.apk")))
+        self.apk_var = tk.StringVar(value=str(self.user_settings.get("apk_output", desktop_path("AVS03-Android.apk"))))
         self.include_saves_var = tk.BooleanVar(value=False)
+        self.update_mode_var = tk.BooleanVar(value=bool(self.user_settings.get("update_mode", False)) and self.cached_project_path is not None)
+        self.game_executable_var.trace_add("write", self._save_builder_settings)
+        self.apk_var.trace_add("write", self._save_builder_settings)
+        self.android_sdk_var.trace_add("write", self._save_sdk_path)
         self.status_var = tk.StringVar(value="Select the game's Windows or Linux executable, then build the Android APK.")
         self.build_log_path: Path | None = None
         self.save_transfer_window = None
@@ -191,6 +200,59 @@ class Builder(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.close_app)
         self._process_events_after_id = self.after(120, self._process_events)
         self._quickstart_after_id = self.after(350, self.open_quickstart)
+
+    def _read_cached_project(self) -> Path | None:
+        metadata = TOOLS_ROOT / "last-recovered-project.json"
+        try:
+            data = json.loads(metadata.read_text(encoding="utf-8"))
+            project = Path(data["project_path"]).expanduser().resolve()
+            project.relative_to((TOOLS_ROOT / "workspaces").resolve())
+            return project if (project / "project.godot").is_file() else None
+        except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+            return None
+
+    def _load_builder_settings(self) -> dict[str, object]:
+        try:
+            settings = json.loads((TOOLS_ROOT / "builder-settings.json").read_text(encoding="utf-8"))
+            return settings if isinstance(settings, dict) else {}
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            return {}
+
+    def _save_builder_settings(self, *_args) -> None:
+        try:
+            TOOLS_ROOT.mkdir(parents=True, exist_ok=True)
+            settings = {
+                "game_executable": self.game_executable_var.get().strip(),
+                "apk_output": self.apk_var.get().strip(),
+                "update_mode": bool(self.update_mode_var.get()) if hasattr(self, "update_mode_var") else False,
+            }
+            path = TOOLS_ROOT / "builder-settings.json"
+            temporary = path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+            temporary.replace(path)
+        except OSError:
+            pass
+
+    def _save_sdk_path(self, *_args) -> None:
+        try:
+            TOOLS_ROOT.mkdir(parents=True, exist_ok=True)
+            (TOOLS_ROOT / "android-sdk-path.txt").write_text(self.android_sdk_var.get().strip(), encoding="utf-8")
+        except OSError:
+            pass
+
+    def _refresh_update_button(self) -> None:
+        valid_cache = bool(self.cached_project_path and (self.cached_project_path / "project.godot").is_file())
+        if hasattr(self, "update_mode_toggle"):
+            self.update_mode_toggle.configure(state="normal" if valid_cache and not self._busy else "disabled")
+        if not valid_cache and self.update_mode_var.get():
+            self.update_mode_var.set(False)
+            self._save_builder_settings()
+        if hasattr(self, "build_button"):
+            self.build_button.configure(text="Build APK Update" if self.update_mode_var.get() else "Build Android APK")
+
+    def on_update_mode_changed(self) -> None:
+        self._save_builder_settings()
+        self._refresh_update_button()
 
     def close_app(self) -> None:
         """Close the main window and any transient windows opened by the builder."""
@@ -323,6 +385,14 @@ class Builder(tk.Tk):
         )
         ttk.Label(outer, text=sdk_setup_text, wraplength=710).pack(anchor="w", pady=(5, 16))
         self._path_row(outer, "Game executable from your Steam install", self.game_executable_var, self.pick_game_executable)
+        self.update_mode_toggle = ttk.Checkbutton(
+            outer,
+            text="Update mode — reuse the last recovered project",
+            variable=self.update_mode_var,
+            command=self.on_update_mode_changed,
+        )
+        self.update_mode_toggle.pack(anchor="w", pady=(6, 0))
+        ttk.Label(outer, text="Build APK Update reuses the last recovered project to speed up control changes. Build Android APK again to recover updated game files.", wraplength=710, foreground="#444").pack(anchor="w", pady=(4, 0))
         package_info = ttk.Frame(outer)
         package_info.pack(fill="x", pady=(8, 0))
         ttk.Label(
@@ -342,7 +412,7 @@ class Builder(tk.Tk):
         self.save_checkbutton.pack(anchor="w")
         ttk.Label(
             save_box,
-            text="When enabled, the detected desktop profile and settings are imported on the phone's first launch. This APK will contain those personal saves.",
+            text="Full builds can include desktop saves for first launch. Build APK Update always skips this archive so an update cannot import desktop saves over the phone's existing data.",
             wraplength=670,
         ).pack(anchor="w", pady=(4, 0))
         ttk.Label(outer, text="DRM / Steamworks: The builder does not intentionally remove or replace Steamworks integration. An Android export can fail if the original DRM or Steamworks components do not support Android; this tool does not bypass those checks.", wraplength=770, foreground="#444").pack(anchor="w", pady=(7, 0))
@@ -361,14 +431,15 @@ class Builder(tk.Tk):
         buttons.pack(fill="x", pady=(8, 0))
         buttons.columnconfigure(0, weight=1, uniform="actions")
         buttons.columnconfigure(1, weight=1, uniform="actions")
-        self.build_button = ttk.Button(buttons, text="Build Android APK", command=self.start_android_export)
-        self.build_button.grid(row=0, column=0, sticky="ew", padx=(0, 4), pady=2)
+        self.build_button = ttk.Button(buttons, text="Build Android APK", command=self.start_selected_build)
+        self.build_button.grid(row=0, column=0, columnspan=2, sticky="ew", pady=2)
+        self._refresh_update_button()
         self.save_button = ttk.Button(buttons, text="Transfer Saves…", command=self.open_save_transfer)
-        self.save_button.grid(row=0, column=1, sticky="ew", padx=(4, 0), pady=2)
+        self.save_button.grid(row=1, column=0, sticky="ew", padx=(0, 4), pady=2)
         self.cleanup_button = ttk.Button(buttons, text="Clean Up Space…", command=self.open_cleanup_dialog)
-        self.cleanup_button.grid(row=1, column=0, sticky="ew", padx=(0, 4), pady=2)
+        self.cleanup_button.grid(row=1, column=1, sticky="ew", padx=(4, 0), pady=2)
         self.log_button = ttk.Button(buttons, text="View / Copy Build Log", command=self.open_build_log, state="disabled")
-        self.log_button.grid(row=1, column=1, sticky="ew", padx=(4, 0), pady=2)
+        self.log_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=2)
 
     def _path_row(self, parent: ttk.Frame, label: str, variable: tk.StringVar, command) -> None:
         ttk.Label(parent, text=label).pack(anchor="w", pady=(8, 4))
@@ -593,7 +664,9 @@ class Builder(tk.Tk):
             self.events.put(("cleanup-result", (0, [str(exc)])))
 
     def _set_busy(self, busy: bool, status: str, indeterminate: bool = False) -> None:
+        self._busy = busy
         self.build_button.configure(state="disabled" if busy else "normal")
+        self._refresh_update_button()
         self.save_button.configure(state="disabled" if busy else "normal")
         self.cleanup_button.configure(state="disabled" if busy else "normal")
         self.save_checkbutton.configure(state="disabled" if busy else "normal")
@@ -649,20 +722,38 @@ class Builder(tk.Tk):
         return result["accepted"]
 
     def start_android_export(self) -> None:
-        game_executable = Path(self.game_executable_var.get()).expanduser()
+        self._start_android_export(use_cached_project=False)
+
+    def start_android_update(self) -> None:
+        self._start_android_export(use_cached_project=True)
+
+    def start_selected_build(self) -> None:
+        self._start_android_export(use_cached_project=self.update_mode_var.get())
+
+    def _start_android_export(self, use_cached_project: bool) -> None:
+        game_text = self.game_executable_var.get().strip()
+        game_executable = Path(game_text).expanduser() if game_text else None
+        cached_project = self.cached_project_path if use_cached_project else None
         output = Path(self.apk_var.get()).expanduser()
-        if not game_executable.is_file():
+        if use_cached_project and (cached_project is None or not (cached_project / "project.godot").is_file()):
+            self.cached_project_path = None
+            self._refresh_update_button()
+            messagebox.showerror(APP_TITLE, "The cached recovered project is unavailable. Run Build Android APK once to recover the game again.", parent=self)
+            return
+        if not use_cached_project and (game_executable is None or not game_executable.is_file()):
             messagebox.showerror(APP_TITLE, "Select an existing game executable.", parent=self)
             return
         if not output.name.lower().endswith(".apk"):
             messagebox.showerror(APP_TITLE, "Choose an output filename ending in .apk.", parent=self)
             return
-        if game_executable.resolve() == output.resolve():
+        if game_executable is not None and game_executable.resolve() == output.resolve():
             messagebox.showerror(APP_TITLE, "The APK output cannot overwrite the game executable.", parent=self)
             return
         if not self._ask_download_consent(
             "Before this build downloads tools",
-            "A first build may download GDRE Tools to recover the local project, Godot and its Android export templates, and Eclipse Temurin Java. If needed, the builder will ask separately before downloading public GodotSteam Android libraries and—on the SDK Downloader edition—Google Android SDK packages. Downloads are stored on this computer; your game files are not uploaded. No webpage will open unless you select one below.",
+            ("This update reuses the last recovered project and skips game recovery. Godot, Java, export templates, Android SDK components, or public GodotSteam libraries may still need setup if they are missing. All files stay on this computer; no game files are uploaded. No webpage will open unless you select one below."
+             if use_cached_project else
+             "A first build may download GDRE Tools to recover the local project, Godot and its Android export templates, and Eclipse Temurin Java. If needed, the builder will ask separately before downloading public GodotSteam Android libraries and—on the SDK Downloader edition—Google Android SDK packages. Downloads are stored on this computer; your game files are not uploaded. No webpage will open unless you select one below."),
             (
                 ("GDRE Tools releases", GDRE_RELEASES_URL),
                 ("Godot releases", GODOT_RELEASES_URL),
@@ -715,6 +806,7 @@ class Builder(tk.Tk):
         except OSError as exc:
             messagebox.showerror(APP_TITLE, f"Could not save the selected SDK path.\n\n{exc}", parent=self)
             return
+        include_saves = self.include_saves_var.get() and not use_cached_project
         build_log = output.with_suffix(".build.log")
         try:
             build_log.parent.mkdir(parents=True, exist_ok=True)
@@ -723,14 +815,16 @@ class Builder(tk.Tk):
                 f"Started: {time.strftime('%Y-%m-%d %H:%M:%S %z')}\n"
                 f"Operating system: {platform.platform()}\n"
                 f"Python: {sys.version.split()[0]}\n"
-                f"Game executable: {game_executable}\n"
+                f"Game executable: {game_executable or '(cached recovered project)'}\n"
+                f"Reuse cached recovered project: {use_cached_project}\n"
                 f"GodotSteam package: public {GODOTSTEAM_VERSION} package ({GODOTSTEAM_ASSET_URL})\n"
                 f"GodotSteam package download consent or verified prior cache: {public_package_consent}\n"
                 f"Android SDK root: {sdk.resolve()}\n"
                 f"SDK downloader edition: {SDK_DOWNLOADER_EDITION}\n"
                 f"SDK download/license consent: {accepted_sdk_licenses}\n"
                 f"APK output: {output}\n"
-                f"Include desktop saves: {self.include_saves_var.get()}\n\n",
+                f"Include desktop saves: {include_saves}"
+                + (" (disabled for cached APK update to preserve phone data)\n\n" if use_cached_project else "\n\n"),
                 encoding="utf-8",
             )
         except OSError as exc:
@@ -738,22 +832,24 @@ class Builder(tk.Tk):
             return
         self.build_log_path = build_log
         self.log_button.configure(state="normal")
-        self._set_busy(True, "Starting recovery and Android build…")
+        self._set_busy(True, "Starting cached APK update…" if use_cached_project else "Starting recovery and Android build…")
         threading.Thread(
             target=self._build_pipeline_worker,
-            args=(game_executable, output, self.include_saves_var.get(), sdk.resolve(), allow_sdk_download, accepted_sdk_licenses, build_log),
+            args=(game_executable, output, include_saves, sdk.resolve(), allow_sdk_download, accepted_sdk_licenses, build_log, use_cached_project, cached_project),
             daemon=True,
         ).start()
 
     def _build_pipeline_worker(
         self,
-        game_executable: Path,
+        game_executable: Path | None,
         output: Path,
         include_saves: bool,
         android_sdk: Path,
         allow_sdk_download: bool,
         accepted_sdk_licenses: bool,
         build_log: Path,
+        use_cached_project: bool,
+        cached_project: Path | None,
     ) -> None:
         def write_log(message: str) -> None:
             with build_log.open("a", encoding="utf-8", errors="replace") as log:
@@ -810,60 +906,74 @@ class Builder(tk.Tk):
             report_progress(start + (end - start) * fraction, message, force=not parsed)
 
         try:
-            progress("Preparing GDRE Tools…")
-            gdre = ensure_gdre_tool(progress)
-            recovery_input = find_companion_pack(game_executable) or game_executable
-            recovery_root = TOOLS_ROOT / "workspaces"
-            recovery_root.mkdir(parents=True, exist_ok=True)
-            safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", game_executable.stem).strip("._") or "game"
-            recovered_project = recovery_root / f"{safe_stem}-{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns()}"
-            recovered_project.parent.mkdir(parents=True, exist_ok=True)
-            progress(f"Recovering game files from {recovery_input.name}…")
-            env = os.environ.copy()
-            if sys.platform != "win32":
-                profile = Path(tempfile.gettempdir()) / "avs03-gdre-profile"
-                for name in ("data", "config", "cache"):
-                    (profile / name).mkdir(parents=True, exist_ok=True)
-                env["XDG_DATA_HOME"] = str(profile / "data")
-                env["XDG_CONFIG_HOME"] = str(profile / "config")
-                env["XDG_CACHE_HOME"] = str(profile / "cache")
-            recovery = subprocess.Popen(
-                [str(gdre), "--headless", f"--recover={recovery_input}", f"--output={recovered_project}"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                errors="replace",
-                bufsize=1,
-                cwd=str(recovery_root),
-                env=env,
-            )
-            recovery_lines = []
-            recovery_range = (8.0, 11.0)
-            if recovery.stdout is not None:
-                for line in recovery.stdout:
-                    recovery_lines.append(line)
-                    lower_line = line.lower()
-                    if "loading import files" in lower_line:
-                        recovery_range = (8.0, 12.0)
-                    elif "loading gdscript cache" in lower_line:
-                        recovery_range = (12.0, 16.0)
-                    elif "reading pck archive" in lower_line:
-                        recovery_range = (16.0, 21.0)
-                    elif "exporting resources" in lower_line:
-                        recovery_range = (21.0, 29.0)
-                    elif "recovery finished" in lower_line:
-                        report_progress(30, "Finishing game recovery…")
-                    parsed = re.search(r"(?<![\d.])(\d{1,3})%(?!\d)", line)
-                    if parsed:
-                        percent = min(int(parsed.group(1)), 100)
-                        start, end = recovery_range
-                        report_progress(start + (end - start) * percent / 100, "Recovering game files…")
-            recovery_code = recovery.wait()
-            recovery_log = "".join(recovery_lines)
-            write_log(f"GDRE exit code: {recovery_code}\n=== GDRE recovery output ===\n{recovery_log}\n=== End GDRE recovery output ===")
-            if not (recovered_project / "project.godot").is_file():
-                raise RuntimeError("GDRE Tools could not recover a Godot project from that executable or its companion PCK. Select the game's executable from its complete Steam install.")
-            (recovered_project / "gdre-cli-output.txt").write_text(recovery_log, encoding="utf-8", errors="replace")
+            if use_cached_project:
+                recovered_project = cached_project
+                if recovered_project is None or not (recovered_project / "project.godot").is_file():
+                    raise RuntimeError("The cached recovered project is unavailable. Run a full build to recover the game again.")
+                progress("Reusing the cached recovered game project…")
+            else:
+                if game_executable is None:
+                    raise RuntimeError("Select the game's executable before recovering the project.")
+                progress("Preparing GDRE Tools…")
+                gdre = ensure_gdre_tool(progress)
+                recovery_input = find_companion_pack(game_executable) or game_executable
+                recovery_root = TOOLS_ROOT / "workspaces"
+                recovery_root.mkdir(parents=True, exist_ok=True)
+                safe_stem = re.sub(r"[^A-Za-z0-9._-]+", "_", game_executable.stem).strip("._") or "game"
+                recovered_project = recovery_root / f"{safe_stem}-{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns()}"
+                recovered_project.parent.mkdir(parents=True, exist_ok=True)
+                progress(f"Recovering game files from {recovery_input.name}…")
+                env = os.environ.copy()
+                if sys.platform != "win32":
+                    profile = Path(tempfile.gettempdir()) / "avs03-gdre-profile"
+                    for name in ("data", "config", "cache"):
+                        (profile / name).mkdir(parents=True, exist_ok=True)
+                    env["XDG_DATA_HOME"] = str(profile / "data")
+                    env["XDG_CONFIG_HOME"] = str(profile / "config")
+                    env["XDG_CACHE_HOME"] = str(profile / "cache")
+                recovery = subprocess.Popen(
+                    [str(gdre), "--headless", f"--recover={recovery_input}", f"--output={recovered_project}"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    errors="replace",
+                    bufsize=1,
+                    cwd=str(recovery_root),
+                    env=env,
+                )
+                recovery_lines = []
+                recovery_range = (8.0, 11.0)
+                if recovery.stdout is not None:
+                    for line in recovery.stdout:
+                        recovery_lines.append(line)
+                        lower_line = line.lower()
+                        if "loading import files" in lower_line:
+                            recovery_range = (8.0, 12.0)
+                        elif "loading gdscript cache" in lower_line:
+                            recovery_range = (12.0, 16.0)
+                        elif "reading pck archive" in lower_line:
+                            recovery_range = (16.0, 21.0)
+                        elif "exporting resources" in lower_line:
+                            recovery_range = (21.0, 29.0)
+                        elif "recovery finished" in lower_line:
+                            report_progress(30, "Finishing game recovery…")
+                        parsed = re.search(r"(?<![\d.])(\d{1,3})%(?!\d)", line)
+                        if parsed:
+                            percent = min(int(parsed.group(1)), 100)
+                            start, end = recovery_range
+                            report_progress(start + (end - start) * percent / 100, "Recovering game files…")
+                recovery_code = recovery.wait()
+                recovery_log = "".join(recovery_lines)
+                write_log(f"GDRE exit code: {recovery_code}\n=== GDRE recovery output ===\n{recovery_log}\n=== End GDRE recovery output ===")
+                if not (recovered_project / "project.godot").is_file():
+                    raise RuntimeError("GDRE Tools could not recover a Godot project from that executable or its companion PCK. Select the game's executable from its complete Steam install.")
+                (recovered_project / "gdre-cli-output.txt").write_text(recovery_log, encoding="utf-8", errors="replace")
+                metadata = TOOLS_ROOT / "last-recovered-project.json"
+                temporary_metadata = metadata.with_suffix(".tmp")
+                temporary_metadata.write_text(json.dumps({"project_path": str(recovered_project.resolve())}, indent=2), encoding="utf-8")
+                temporary_metadata.replace(metadata)
+                self.events.put(("cached-project", recovered_project))
+            write_log(f"Using recovered project: {recovered_project}")
             progress(f"Checking public GodotSteam {GODOTSTEAM_VERSION} Android ARM64 libraries…")
             installed = install_public_android_libraries(recovered_project, TOOLS_ROOT, progress)
             if installed:
@@ -1086,8 +1196,13 @@ class Builder(tk.Tk):
                     + "\n\nUse View / Copy Build Log to copy the full log. For help, paste only the log text into the project's GitHub Issues page: https://github.com/SoundWaveless/AVS03-Android-Recompiler/issues/new?template=build-log.yml. Do not attach files.",
                     parent=self,
                 )
+        elif kind == "cached-project":
+            self.cached_project_path = Path(payload)
+            self._refresh_update_button()
         elif kind == "cleanup-result":
             self._set_busy(False, self.status_var.get())
+            self.cached_project_path = self._read_cached_project()
+            self._refresh_update_button()
             freed, errors = payload
             if errors:
                 self.status_var.set("Cleanup finished with some files left behind.")

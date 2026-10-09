@@ -57,12 +57,13 @@ In the repository, the Linux source files are in `linux/builder/`. Open a termin
 ## Build an Android APK
 
 1. Install the game through Steam and start the builder.
-2. Select the game's executable from its Steam install folder. Keep the companion `.pck` file beside it when the game installation has one. If Android Steamworks libraries are missing from the recovered project, the builder asks before downloading the public GodotSteam package.
+2. Select the game's executable from its Steam install folder. The builder remembers this path, the Android SDK folder, and the selected APK output path after you close and reopen it. Keep the companion `.pck` file beside the executable when the game installation has one. If Android Steamworks libraries are missing from the recovered project, the builder asks before downloading the public GodotSteam package.
 3. Choose an APK output path. **Include desktop saves in this APK** is optional; it includes the detected desktop settings and newest profile slots in the APK.
 4. Choose **Build Android APK**. The manual-SDK edition uses the SDK you selected without downloading SDK packages. The separate SDK Downloader edition can install missing Google packages only after its consent prompt. You can also install the SDK in Android Studio first.
 5. The builder recovers the project, downloads/caches GDRE Tools, a matching Godot editor/templates, and OpenJDK, applies the Android patch, imports assets, and exports the APK. Initial setup needs an internet connection and several gigabytes of free space. The Windows build path has been confirmed to compile an APK; device testing of the Windows-produced APK is still pending.
-6. Use **Clean Up Space…** later to remove AVS03-managed downloads and recovered workspaces. An SDK in the AVS03-managed folder is shown as a separate cleanup choice; SDKs installed elsewhere are not removed.
-7. Install the APK on an ARM64 Android device. If replacing an existing installation, Android may require the same signing identity. Uninstalling first may erase that app's save data.
+6. After a full build recovers the game once, turn on the **Update mode** toggle to switch the main button to **Build APK Update** for later mobile-control changes. The toggle is enabled when a cached project is available and its selection is remembered. Update mode reuses the last recovered project and cached Godot imports, skips GDRE recovery, applies the latest included Android patch, and exports a new complete APK. It always excludes the optional desktop-save archive, even if that checkbox is selected. This preserves the phone's existing saves, but newer desktop saves will not be imported by this update. To import newer desktop saves, either turn off Update mode and make a full APK with **Include desktop saves** enabled, or use **Transfer Saves…** with ADB and USB debugging. Update mode does not create a small differential APK patch; Android still installs a new APK. Turn off Update mode when the Steam game files need to be recovered afresh. The cached project remains in AVS03's private workspace until you remove it with **Clean Up Space…**.
+7. Install the new APK as an update over the existing app. With the same package ID and signing identity, Android normally retains the app's private save data; this update path does not uninstall the app or clear that data. Do not uninstall first if you need to keep saves.
+8. Use **Clean Up Space…** later to remove AVS03-managed downloads and recovered workspaces. Removing the recovered workspace also disables **Build APK Update** until the next full build. An SDK in the AVS03-managed folder is shown as a separate cleanup choice; SDKs installed elsewhere are not removed.
 
 The builder downloads/caches GDRE Tools, a matching Godot editor and Android export templates, Eclipse Temurin OpenJDK 17, and—after consent when needed—the public Android GodotSteam package. Install [Android Studio from Google](https://developer.android.com/studio), then install the required Android SDK packages through its SDK Manager. The manual-SDK edition uses only the SDK folder you select; it does not download SDK packages. The separate SDK Downloader edition uses Google's current Android CLI to install missing packages after an explicit consent dialog that links Google's terms. See [LAUNCH-REQUIREMENTS.md](LAUNCH-REQUIREMENTS.md) for versions and steps.
 
@@ -73,14 +74,18 @@ On a touchscreen device, open **Settings → Controls → Mobile**:
 - Choose **Classic** to keep the existing control layout, or **Custom** to set each control's position and size.
 - Choose **Arrange** to enter the editor. Drag a control to move it. Hold a control with one finger and move a second finger outward or inward to resize it. Tap **Done** to save and exit.
 - A, B, X, LT, Pause, and the movement control can be arranged independently. Movement can use the analog joystick or digital D-pad.
+- The D-pad supports up, down, left, right, and all four diagonal directions. Diagonal touches send the two matching Xbox D-pad directions together.
+- Pair a Bluetooth gamepad in Android Settings first, then launch the game. The virtual buttons send Godot joypad events using an Xbox-style button and axis layout; Android does not use the Windows XInput API. Physical controllers are handled when Android/Godot reports them as connected gamepads.
+- When a physical gamepad is connected, the virtual controls hide automatically. They reappear after the last gamepad disconnects, or as soon as the player touches the screen. Any connected gamepad is treated the same; Android/Godot does not report whether it uses Bluetooth or USB here.
+- A physical keyboard key press hides the virtual controls. Since this script-only Godot build does not expose Android keyboard attach/detach events, keyboard activity is treated as active for 8 seconds; the controls then return unless a gamepad is connected. Touching the screen brings them back immediately.
 - Existing options for control size/opacity, analog deadzone, classic position offsets, and classic pause placement remain available.
 - Position and individual size values persist in the game's settings file on the phone.
 
 ## Save transfer
 
-Desktop save inclusion is optional. When enabled, the builder finds the desktop `AntivirusSurvivors` user-data folder, picks the newest profile directory and its slots, and maps Steam-ID-nested files into Android's `user://profiles/` layout. Existing Android slots with the same number are replaced during import. The builder leaves Steamworks integration in place; Android runtime behavior depends on the game's original Android-compatible integration.
+Desktop save inclusion is optional. When enabled for a full APK build, the builder finds the desktop `AntivirusSurvivors` user-data folder, picks the newest profile directory and its slots, and maps Steam-ID-nested files into Android's `user://profiles/` layout. Existing Android slots with the same number are replaced during import. **Build APK Update** never includes this archive, so it will not import newer PC saves; use a full APK build with the option enabled if you want the APK to carry those saves.
 
-Alternatively, choose **Transfer Saves…** in the builder to make a separate ZIP or send it to an installed debug build over ADB. Direct transfer needs Android platform-tools, USB debugging, and an authorized device. Treat save archives as private because they contain personal game progress and settings.
+Alternatively, choose **Transfer Saves…** in the builder to make a separate ZIP or send the saves directly to the phone over ADB. Direct transfer requires Android platform-tools (`adb` installed), USB debugging enabled, and the computer authorized on the phone. The archive is placed in the app's transfer inbox and imported the next time the game starts; close and restart the game if it is already running. Treat save archives as private because they contain personal game progress and settings.
 
 ## Logs and troubleshooting
 
@@ -98,5 +103,9 @@ To request help, use the project's [GitHub Issues page](https://github.com/Sound
 ## Standalone package details
 
 The Linux executable is a PyInstaller one-file x86-64 build. It was generated on a Linux host and requires a graphical desktop. The Windows source package can launch from Python or build a native Windows executable locally. The two platforms' compiled executables are not interchangeable.
+
+### Physical input visibility
+
+Connected gamepads are read with Godot's `Input.get_connected_joypads()` and their add/remove transitions. This detects gamepads independently of connection transport and hides the overlay while one is connected. A screen touch overrides that hidden state; disconnecting the last gamepad also restores the overlay. Physical keyboard input hides the overlay for an 8-second inactivity window. Android's `InputManager` has device-added/removed callbacks, but using those for a keyboard requires a native Android plugin and Gradle integration; this release does not include that plugin.
 
 The Android export uses Godot's Android export workflow. The builder selects ARM64 and uses Android SDK platform 35, build-tools 35.0.1, and the Android NDK version configured in `tool_setup.py`. More details and links are in [CODE-AND-SOURCES.md](CODE-AND-SOURCES.md).

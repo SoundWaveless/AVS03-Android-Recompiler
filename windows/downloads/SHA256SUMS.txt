@@ -1,2 +1,2 @@
-a57d460cce36a2a88513d99301ee6f4a2e032d1a43ad5735ca4dee1b87c74e56  AVS03-Android-Builder-Windows-SDK-Downloader-Source.zip
-35935fe65b9f44b3f5c57497189f91a7a1cf1b12f00e9e24e89b00de5e58225f  AVS03-Android-Builder-Windows-Source.zip
+afa590062865a621c7cde4831d76e964a98cfc8ee7a3f17e958f26cf86ad5107  AVS03-Android-Builder-Windows-SDK-Downloader-Source.zip
+3c481b926780879f6a73795a8e0d5a4ff4f3a0f3e1866c6c685ec0bbb53974b8  AVS03-Android-Builder-Windows-Source.zip
