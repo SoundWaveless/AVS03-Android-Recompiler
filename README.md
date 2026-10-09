@@ -1,6 +1,6 @@
 # AVS03 Android Recompiler
 
-> **Unofficial fan project.** This community builder is not affiliated with or endorsed by the game developer/publisher, Valve/Steam, or Godot. It does not include the game or grant rights to game content.
+> **Unofficial fan project for [Antivirus Survivors 2003 Professional](https://store.steampowered.com/app/3832490/Antivirus_Survivors_2003_Professional/).** This community builder is not affiliated with or endorsed by the game developer/publisher, Valve/Steam, or Godot. It does not include the game or grant rights to game content.
 
 Read the [project guide](docs/README.md), [launch requirements](docs/LAUNCH-REQUIREMENTS.md), [code and sources](docs/CODE-AND-SOURCES.md), and [disclaimer and acknowledgment](docs/DISCLAIMER-ACKNOWLEDGMENT.md). Original builder code and documentation are licensed under [MIT](LICENSE).
 
