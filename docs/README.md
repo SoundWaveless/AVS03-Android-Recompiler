@@ -65,6 +65,12 @@ In the repository, the Linux source files are in `linux/builder/`. Open a termin
 7. Install the new APK as an update over the existing app. With the same package ID and signing identity, Android normally retains the app's private save data; this update path does not uninstall the app or clear that data. Do not uninstall first if you need to keep saves.
 8. Use **Clean Up Space…** later to remove AVS03-managed downloads and recovered workspaces. Removing the recovered workspace also disables **Build APK Update** until the next full build. An SDK in the AVS03-managed folder is shown as a separate cleanup choice; SDKs installed elsewhere are not removed.
 
+## Builder updates
+
+Use **Check for Compiler Updates** in the builder to query the latest published GitHub release. If a newer release exists, the updater selects the package for the current OS and SDK Downloader edition, checks the GitHub SHA-256 digest, and asks for your approval before downloading or replacing builder files. It never updates silently. Build tools, game files, APKs, and save data are not included in the update package or targeted by the installer. Restart the builder after updating. The source launch scripts run the separate updater first when its files are present; after it completes, the compiler opens and then shows Quick Start.
+
+For existing 0.1.2 installations, download and install the standalone updater beside the compiler as described in [the updater guide](UPDATER.md). Version 0.1.3 bundles the updater in all four platform/edition packages; launch with `Run-Builder` to check for updates before the compiler opens.
+
 The builder downloads/caches GDRE Tools, a matching Godot editor and Android export templates, Eclipse Temurin OpenJDK 17, and—after consent when needed—the public Android GodotSteam package. Install [Android Studio from Google](https://developer.android.com/studio), then install the required Android SDK packages through its SDK Manager. The manual-SDK edition uses only the SDK folder you select; it does not download SDK packages. The separate SDK Downloader edition uses Google's current Android CLI to install missing packages after an explicit consent dialog that links Google's terms. See [LAUNCH-REQUIREMENTS.md](LAUNCH-REQUIREMENTS.md) for versions and steps.
 
 ## Mobile controls

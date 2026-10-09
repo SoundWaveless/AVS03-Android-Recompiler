@@ -1,2 +1,2 @@
-0f9471b466045f512bb75a521f7d70a73d8d5fee83ec0e332dfd2de41e71cebf  AVS03-Android-Builder-Linux-SDK-Downloader.zip
-e0b3bcf1e3dbcf8baa45eec38be4aeee3d3855f91fdb7535fceced77678a91c0  AVS03-Android-Builder-Linux-x86_64.zip
+e2bcea717ad9152661d68734552175daab91d6d63bcfc662aeec393d4a9e1b91  AVS03-Android-Builder-Linux-x86_64.zip
+fab01f2fb230edac66f93172f943f89c93ecbb14ea34bafe44a457b3b6ac8ec8  AVS03-Android-Builder-Linux-SDK-Downloader.zip

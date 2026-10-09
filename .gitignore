@@ -1,0 +1,6 @@
+# Local build products
+/dist/
+/updater/dist/
+/updater/downloads/*.zip
+__pycache__/
+*.py[cod]

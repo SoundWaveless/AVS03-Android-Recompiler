@@ -31,6 +31,7 @@ from godotsteam_package import (
     install_public_android_libraries,
 )
 from tool_setup import TOOLS_ROOT, detect_android_sdk, ensure_gdre_tool, setup_export_tools, validate_android_sdk
+from update_manager import APP_VERSION, check_latest_release, download_release_asset, get_install_directory, install_release_package
 
 
 APP_TITLE = "AVS03 Android Recompiler" + (" — SDK Downloader Edition" if SDK_DOWNLOADER_EDITION else "")
@@ -176,6 +177,7 @@ class Builder(tk.Tk):
         self._process_events_after_id = None
         self._quickstart_after_id = None
         self._scrollregion_after_id = None
+        self._readme_tooltip = None
         self.user_settings = self._load_builder_settings()
         self.game_executable_var = tk.StringVar()
         self.cached_project_path = self._read_cached_project()
@@ -184,6 +186,7 @@ class Builder(tk.Tk):
         self.apk_var = tk.StringVar(value=str(self.user_settings.get("apk_output", desktop_path("AVS03-Android.apk"))))
         self.include_saves_var = tk.BooleanVar(value=False)
         self.update_mode_var = tk.BooleanVar(value=bool(self.user_settings.get("update_mode", False)) and self.cached_project_path is not None)
+        self.update_check_running = False
         self.game_executable_var.trace_add("write", self._save_builder_settings)
         self.apk_var.trace_add("write", self._save_builder_settings)
         self.android_sdk_var.trace_add("write", self._save_sdk_path)
@@ -200,6 +203,71 @@ class Builder(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.close_app)
         self._process_events_after_id = self.after(120, self._process_events)
         self._quickstart_after_id = self.after(350, self.open_quickstart)
+
+    def _show_readme_tooltip(self, event) -> None:
+        self._hide_readme_tooltip()
+        tooltip = tk.Toplevel(self)
+        tooltip.wm_overrideredirect(True)
+        tooltip.wm_geometry(f"+{event.x_root + 12}+{event.y_root + 14}")
+        ttk.Label(tooltip, text="Click to open the README in a new window", padding=(7, 4), relief="solid").pack()
+        self._readme_tooltip = tooltip
+
+    def _hide_readme_tooltip(self, _event=None) -> None:
+        if self._readme_tooltip is not None:
+            try:
+                self._readme_tooltip.destroy()
+            except tk.TclError:
+                pass
+            self._readme_tooltip = None
+
+    def open_readme(self) -> None:
+        base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+        readme_candidates = [
+            base / "docs" / "README.md",
+            base.parent / "docs" / "README.md",
+            base.parent.parent / "docs" / "README.md",
+            base.parent.parent.parent / "docs" / "README.md",
+            Path(sys.executable).resolve().parent / "docs" / "README.md",
+        ]
+        readme_path = next((path for path in readme_candidates if path.is_file()), None)
+        if readme_path is None:
+            messagebox.showerror(APP_TITLE, "Could not find the bundled README file.", parent=self)
+            return
+        try:
+            readme = readme_path.read_text(encoding="utf-8")
+        except OSError as exc:
+            messagebox.showerror(APP_TITLE, f"Could not read the bundled README file.\n\n{exc}", parent=self)
+            return
+        window = tk.Toplevel(self)
+        window.title("AVS03 Compiler README")
+        self._fit_dialog(window, 820, 680, 520, 400)
+        window.transient(self)
+        body = ttk.Frame(window, padding=14)
+        body.pack(fill="both", expand=True)
+        text_box = tk.Text(body, wrap="word", height=28, width=96, font=("Segoe UI", 10), padx=10, pady=10, spacing1=1, spacing3=3)
+        text_box.tag_configure("h1", font=("Segoe UI", 18, "bold"), foreground="#243b53", spacing1=12, spacing3=8)
+        text_box.tag_configure("h2", font=("Segoe UI", 14, "bold"), foreground="#243b53", spacing1=10, spacing3=5)
+        text_box.tag_configure("h3", font=("Segoe UI", 12, "bold"), foreground="#334e68", spacing1=8, spacing3=4)
+        text_box.tag_configure("quote", foreground="#7b1e1e", lmargin1=12, lmargin2=12)
+        scrollbar = ttk.Scrollbar(body, orient="vertical", command=text_box.yview)
+        text_box.configure(yscrollcommand=scrollbar.set)
+        text_box.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        for line in readme.splitlines():
+            heading = re.match(r"^(#{1,3})\s+(.*)$", line)
+            tag = None
+            if heading:
+                tag = f"h{len(heading.group(1))}"
+                line = heading.group(2)
+            elif line.startswith("> "):
+                tag, line = "quote", line[2:]
+            elif line.startswith("- "):
+                line = "• " + line[2:]
+            line = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1 (\2)", line)
+            line = re.sub(r"\*\*(.*?)\*\*", r"\1", line).replace("`", "")
+            text_box.insert("end", line + "\n", tag or ())
+        text_box.configure(state="disabled")
+        ttk.Button(window, text="Close", command=window.destroy).pack(anchor="e", padx=14, pady=(0, 12))
 
     def _read_cached_project(self) -> Path | None:
         metadata = TOOLS_ROOT / "last-recovered-project.json"
@@ -253,6 +321,34 @@ class Builder(tk.Tk):
     def on_update_mode_changed(self) -> None:
         self._save_builder_settings()
         self._refresh_update_button()
+
+    def check_for_updates(self) -> None:
+        if self._busy or self.update_check_running:
+            return
+        self.update_check_running = True
+        self._set_busy(True, "Checking GitHub for builder updates…", indeterminate=True)
+        threading.Thread(target=self._update_check_worker, daemon=True).start()
+
+    def _update_check_worker(self) -> None:
+        try:
+            update = check_latest_release(APP_VERSION, SDK_DOWNLOADER_EDITION)
+            self.events.put(("update-check", (update, None)))
+        except Exception as exc:
+            self.events.put(("update-check", (None, str(exc))))
+
+    def _install_update(self, update: dict[str, object]) -> None:
+        self._set_busy(True, f"Downloading version {update['latest_version']}…")
+        threading.Thread(target=self._update_install_worker, args=(update,), daemon=True).start()
+
+    def _update_install_worker(self, update: dict[str, object]) -> None:
+        try:
+            with tempfile.TemporaryDirectory(prefix="avs03-update-") as temporary_directory:
+                archive = Path(temporary_directory) / str(update["asset_name"])
+                download_release_asset(update, archive, lambda done, total: self.events.put(("update-progress", (done, total))))
+                installed = install_release_package(archive, get_install_directory(__file__))
+            self.events.put(("update-installed", (str(update["latest_version"]), len(installed))))
+        except Exception as exc:
+            self.events.put(("update-failed", str(exc)))
 
     def close_app(self) -> None:
         """Close the main window and any transient windows opened by the builder."""
@@ -355,7 +451,19 @@ class Builder(tk.Tk):
         self.bind_all("<MouseWheel>", mousewheel)
         self.bind_all("<Button-4>", mousewheel)
         self.bind_all("<Button-5>", mousewheel)
-        ttk.Label(outer, text="AVS03 Android Recompiler", font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        title_row = ttk.Frame(outer)
+        title_row.pack(anchor="w", fill="x")
+        readme_icon = tk.Canvas(title_row, width=30, height=30, highlightthickness=0, borderwidth=0, cursor="hand2")
+        readme_icon.pack(side="left", padx=(0, 7))
+        readme_icon.create_rectangle(7, 3, 23, 26, fill="#ffffff", outline="#455a64", width=2)
+        readme_icon.create_line(17, 3, 17, 9, 23, 9, fill="#455a64", width=2)
+        readme_icon.create_line(10, 13, 20, 13, fill="#1976a5", width=2)
+        readme_icon.create_line(10, 17, 20, 17, fill="#1976a5", width=2)
+        readme_icon.create_line(10, 21, 18, 21, fill="#1976a5", width=2)
+        readme_icon.bind("<Button-1>", lambda _event: self.open_readme())
+        readme_icon.bind("<Enter>", self._show_readme_tooltip)
+        readme_icon.bind("<Leave>", self._hide_readme_tooltip)
+        ttk.Label(title_row, text="AVS03 Android Recompiler", font=("Segoe UI", 18, "bold")).pack(side="left", anchor="w")
         ttk.Label(outer, text="UNOFFICIAL FAN PROJECT — NOT AFFILIATED WITH OR ENDORSED BY THE DEVELOPER, PUBLISHER, OR STEAM.", font=("Segoe UI", 9, "bold"), foreground="#9b1c1c", wraplength=770).pack(anchor="w", pady=(3, 2))
         contact_notice = ttk.Label(
             outer,
@@ -440,6 +548,8 @@ class Builder(tk.Tk):
         self.cleanup_button.grid(row=1, column=1, sticky="ew", padx=(4, 0), pady=2)
         self.log_button = ttk.Button(buttons, text="View / Copy Build Log", command=self.open_build_log, state="disabled")
         self.log_button.grid(row=2, column=0, columnspan=2, sticky="ew", pady=2)
+        self.check_updates_button = ttk.Button(buttons, text="Check for Compiler Updates", command=self.check_for_updates)
+        self.check_updates_button.grid(row=3, column=0, columnspan=2, sticky="ew", pady=2)
 
     def _path_row(self, parent: ttk.Frame, label: str, variable: tk.StringVar, command) -> None:
         ttk.Label(parent, text=label).pack(anchor="w", pady=(8, 4))
@@ -670,6 +780,8 @@ class Builder(tk.Tk):
         self.save_button.configure(state="disabled" if busy else "normal")
         self.cleanup_button.configure(state="disabled" if busy else "normal")
         self.save_checkbutton.configure(state="disabled" if busy else "normal")
+        if hasattr(self, "check_updates_button"):
+            self.check_updates_button.configure(state="disabled" if busy or self.update_check_running else "normal")
         self.status_var.set(status)
         if busy:
             if indeterminate:
@@ -1199,6 +1311,46 @@ class Builder(tk.Tk):
         elif kind == "cached-project":
             self.cached_project_path = Path(payload)
             self._refresh_update_button()
+        elif kind == "update-check":
+            self.update_check_running = False
+            self._set_busy(False, "Update check complete.")
+            update, error = payload
+            if error:
+                self.status_var.set("Could not check for updates.")
+                messagebox.showerror(APP_TITLE, str(error), parent=self)
+            elif not update["available"]:
+                self.status_var.set(f"Builder is up to date (v{update['latest_version']}).")
+                messagebox.showinfo(APP_TITLE, f"You are using the latest builder release (v{update['latest_version']}).", parent=self)
+            elif messagebox.askyesno(
+                APP_TITLE,
+                f"Version {update['latest_version']} is available for this operating system and edition.\n\nDownload and install it now? The installer verifies the archive's SHA-256 before replacing builder files.",
+                parent=self,
+            ):
+                self._install_update(update)
+            else:
+                self.status_var.set(f"Version {update['latest_version']} is available.")
+        elif kind == "update-progress":
+            downloaded, total = payload
+            percent = min(99.0, 100.0 * int(downloaded) / max(int(total), 1))
+            self.progress.configure(value=percent)
+            self.status_var.set(f"Downloading verified update… {round(percent)}%")
+        elif kind == "update-installed":
+            self._set_busy(False, "Update installed.")
+            version, count = payload
+            self.status_var.set(f"Update v{version} installed ({count} files).")
+            if messagebox.askyesno(APP_TITLE, f"Version {version} is installed. Restart the builder now to use it?", parent=self):
+                install_dir = get_install_directory(__file__)
+                if getattr(sys, "frozen", False) and sys.platform == "win32":
+                    python_launcher = shutil.which("py") or shutil.which("python")
+                    source = install_dir / "avs03_wrapper_builder.py"
+                    command = [python_launcher, str(source)] if python_launcher and source.is_file() else [sys.executable]
+                else:
+                    command = [sys.executable] if getattr(sys, "frozen", False) else [sys.executable, str(Path(__file__).resolve())]
+                subprocess.Popen(command, cwd=install_dir, close_fds=True)
+                self.close_app()
+        elif kind == "update-failed":
+            self._set_busy(False, "Update could not be installed.")
+            messagebox.showerror(APP_TITLE, str(payload), parent=self)
         elif kind == "cleanup-result":
             self._set_busy(False, self.status_var.get())
             self.cached_project_path = self._read_cached_project()

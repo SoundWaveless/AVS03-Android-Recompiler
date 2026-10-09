@@ -1,0 +1,2 @@
+c0ca56092a1ddb5aa51c7c43b9cd0284fa343843aae0c496d1971825f57a5937  AVS03-Compiler-Updater-Linux-x86_64.zip
+96e9afa001f37ecf00580e8a5b16d0e84c97a5a2cd65ab7bd2a715f7793d54f1  AVS03-Compiler-Updater-Windows-Source.zip
